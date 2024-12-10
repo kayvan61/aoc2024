@@ -12,7 +12,7 @@ fn read_input(fname: &str) -> io::Result<Vec<Vec<char>>> {
     Ok(fcont.lines().map(|x| x.chars().collect()).collect())
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Hash, Eq)]
 enum Dir {
     UP,
     DOWN,
@@ -20,7 +20,7 @@ enum Dir {
     RIGHT,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct Loc {
     x: i32,
     y: i32,
@@ -62,7 +62,7 @@ fn find_player(board: &Vec<Vec<char>>) -> Option<Loc> {
 }
 
 // returns if location is valid. if it is valid, then return if its an obstruction
-fn valid_loc(board: &Vec<Vec<char>>, origin: &Loc) -> Valid::<bool> {
+fn valid_loc (board: &Vec<Vec<char>>, origin: &Loc) -> Valid::<bool> {
     let y_max:i32 = board.len().try_into().unwrap();
     let x_max:i32 = board[0].len().try_into().unwrap();
     if origin.y >= y_max || origin.x >= x_max {
@@ -106,8 +106,8 @@ fn advance_board(board: &Vec<Vec<char>>, origin: Loc) -> Valid::<Loc> {
     }
 }
 
-fn simulate(board: &Vec<Vec<char>>, origin: Loc) -> HashSet<(i32, i32)> {
-    let mut cur_loc = origin;
+fn simulate(board: &Vec<Vec<char>>, origin: &Loc) -> HashSet<(i32, i32)> {
+    let mut cur_loc = origin.clone();
     let mut points: HashSet<(i32, i32)> = HashSet::new();
     points.insert((cur_loc.x, cur_loc.y));
     loop {
@@ -118,35 +118,63 @@ fn simulate(board: &Vec<Vec<char>>, origin: Loc) -> HashSet<(i32, i32)> {
     }
 }
 
-fn simulate_with_dir(board: &Vec<Vec<char>>, origin: Loc) -> HashSet<Loc> {
-    let mut cur_loc = origin;
+fn simulate_with_dir(board: &Vec<Vec<char>>, origin: &Loc) -> i32 {
+    let mut cur_loc = origin.clone();
     let mut points: HashSet<Loc> = HashSet::new();
-    points.insert((cur_loc.x, cur_loc.y));
+    let mut blocks: HashSet<Loc> = HashSet::new();
+    points.insert(cur_loc.clone());
     loop {
-        match advance_board(board, cur_loc) {
-            Valid::No     => {return points;},
-            Valid::Yes(t) => {points.insert(t); cur_loc=t;}
-        }
-    }
-}
+        // check if adding a block infront of us will cause a loop
+        let mut spec_loc = origin.clone();
+        let mut spec_path: Vec<Loc> = vec!();
 
-fn print_paths(board: &Vec<Vec<char>>, path: &HashSet<(i32, i32)>) {
-    for (y,row) in board.iter().enumerate() {
-        for (x,_col) in row.iter().enumerate() {
-            let a = TryInto::<i32>::try_into(x).unwrap();
-            let b = TryInto::<i32>::try_into(y).unwrap();
-            if board[y][x] == '^' {
-                print!("{}", board[y][x])
+        // fuck it lmao. make a new board and add the block
+        // set to up always so location is all that matters
+        let mut spec_block = walk(&cur_loc);
+        spec_block.dir = Dir::UP;
+        let mut spec_board = board.clone();
+
+        // check if we can add a thing in front of
+        match valid_loc(&spec_board, &spec_block) {
+            Valid::Yes(t) => {
+                match t {
+                    true => {
+                        let board_cord: (usize, usize) = (spec_block.y.try_into().unwrap(), spec_block.x.try_into().unwrap());
+                        spec_board[board_cord.0][board_cord.1] = '#';
+                        true
+                    }
+                    _ => {false} // already barrier
+                }
             }
-            else if path.contains(&(a,b)) {
-                print!("X")
-            }
-            else {
-                print!("{}", board[y][x])
+            _ => {false} // out of bounds
+        };
+        loop {
+            match advance_board(&spec_board, spec_loc) {
+                Valid::Yes(t) => {
+                    // in the board, check for loop in speculative path
+                    if spec_path.contains(&t) {
+                        blocks.insert(spec_block.clone());
+                        break;
+                    }
+                    spec_path.push(t.clone());
+                    spec_loc = t;
+                }
+                // left the board. retreading done.
+                _ => {break;}
             }
         }
-        println!("");
+        
+        // proceed as normal
+        match advance_board(board, cur_loc) {
+            Valid::No     => {break;},
+            Valid::Yes(t) => {
+                points.insert(t.clone());
+                cur_loc=t;
+            }
+        }
     }
+    
+    return blocks.len().try_into().unwrap();
 }
 
 fn main() {
@@ -160,6 +188,7 @@ fn main() {
         _ => {}
     }
     
-    let path = simulate(&board, origin);
+    let path = simulate(&board, &origin);
     println!("Part1: {}", path.len());
+    println!("part2: {}", simulate_with_dir(&board, &origin))
 }
