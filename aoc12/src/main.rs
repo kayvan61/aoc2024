@@ -37,51 +37,6 @@ fn validate_and_insert(board: &Vec<Vec<char>>, loc: Option<Point>, front: &mut V
     }
 }
 
-#[derive(PartialEq, Debug)]
-enum Dir {
-    Up,
-    Down,
-    Left,
-    Right
-}
-
-fn turn_right(dir: &Dir) -> Dir {
-    use self::Dir::{Up, Right, Left, Down};
-    match dir {
-	Up => Right,
-	Right => Down,
-	Down => Left,
-	Left => Up
-    }
-}
-
-fn turn_left(dir: &Dir) -> Dir {
-    use self::Dir::{Up, Right, Left, Down};
-    match dir {
-	Up => Left,
-	Left => Down,
-	Down => Right,
-	Right => Up,
-    }
-}
-
-fn walk(origin: &Point, dir: &Dir) -> Option<Point> {
-    use self::Dir::{Up, Right, Left, Down};
-    let (x, y): (usize, usize) = *origin;
-    match dir {
-	Up => Some((x, y+1)),
-	Down => match y {
-	    0 => None,
-	    _ => Some((x, y-1))
-	},
-	Left => match x {
-	    0 => None,
-	    _ => Some((x-1, y))
-	},
-	Right => Some((x+1, y))
-    }
-}
-
 fn vis_border(board: &Vec<Vec<char>>, border: &HashSet<Point>) {
     for (y, row) in board.into_iter().enumerate() {
 	for (x, c) in row.into_iter().enumerate() {
@@ -96,47 +51,52 @@ fn vis_border(board: &Vec<Vec<char>>, border: &HashSet<Point>) {
     }
 }
 
-fn walk_border(border: &HashSet<Point>, origin: &Point) -> u64 {
-    let mut turns     = 0;
+fn walk_border(border: &HashSet<Point>) -> u64 {
+    // count corners
+    // exterior corners are ez cause they have two directions, and the diagonal out of the region
+    // interior corners are ez cause they have only ONE diagonal out of the region
 
-    let start_dir = Dir::Up;
-    let start_pos = origin.clone();
+    let mut corner = 0;
     
-    let mut cur_dir = Dir::Up;
-    let mut cur_pos = walk(origin, &cur_dir);
-    // oob turn
-    if cur_pos.is_none() || !border.contains(&cur_pos.unwrap()) {
-	cur_pos = Some(origin.clone());
-	cur_dir = turn_right(&cur_dir);
-	turns += 1;
+    for point in border {
+	let (x, y) = *point;
+
+	let upright   = border.contains(&(x+1, y+1));
+	let upleft    = match x {0 => false, _ => border.contains(&(x-1, y+1))};
+	let up        = border.contains(&(x, y + 1));
+	let downleft  = match y {0 => false, _ => {match x {0 => false, _ => border.contains(&(x-1, y-1))}}};
+	let downright = match y {0 => false, _ => border.contains(&(x+1, y-1))};
+        let down      = match y {0 => false, _ => border.contains(&(x, y - 1))};
+        let left      = match x {0 => false, _ => border.contains(&(x - 1, y))};
+        let right     = border.contains(&(x + 1, y));
+
+	if !up && !left {
+	    corner += 1;
+	}
+	if !up && !right {
+	    corner += 1;
+	}
+	if !down && !left {
+	    corner += 1;
+	}
+	if !down && !right {
+	    corner += 1;
+	}
+	if !upleft && (up && left) {
+	    corner += 1;
+	}
+	if !upright && (up && right) {
+	    corner += 1;
+	}
+	if !downleft && (down && left) {
+	    corner += 1;
+	}
+	if !downright && (down && right) {
+	    corner += 1;
+	}
     }
     
-    while cur_dir != start_dir || cur_pos.unwrap() != start_pos {
-	let left_dir = turn_left(&cur_dir);
-	let right_dir = turn_right(&cur_dir);
-	let next_pos_left  = walk(&cur_pos.unwrap(), &left_dir);
-	let next_pos_front = walk(&cur_pos.unwrap(), &cur_dir);
-	let next_pos_right = walk(&cur_pos.unwrap(), &right_dir);
-
-	// left if possible
-	if next_pos_left.is_some() && border.contains(&next_pos_left.unwrap()) {
-	    cur_dir = left_dir;
-	    cur_pos = next_pos_left;
-	    turns += 1;
-	}
-	// front if possible
-	else if next_pos_front.is_some() && border.contains(&next_pos_front.unwrap()){
-	    cur_pos = next_pos_front;
-	}
-	// otherwise turn right
-	else {
-	    cur_dir = right_dir;
-	    turns += 1;
-	}
-	//println!("{:?} {:?} {:?} {:?}", cur_dir, cur_pos, start_dir, start_pos);
-    }
-
-    turns
+    corner
 }
 
 fn explore_plot(board: &Vec<Vec<char>>, claimed_cords: &mut HashSet<Point>, origin: Point) -> (u64, u64, u64) {
@@ -186,7 +146,7 @@ fn explore_plot(board: &Vec<Vec<char>>, claimed_cords: &mut HashSet<Point>, orig
 	}
     }
     //vis_border(board, &uniq_points);
-    let sides = walk_border(&uniq_points, &origin);
+    let sides = walk_border(&uniq_points);
     (perim, uniq_points.len().try_into().unwrap(), sides)
 }
 
@@ -199,7 +159,6 @@ fn part1(board: &Vec<Vec<char>>) -> u64 {
 		continue;
 	    }
 	    let pa = explore_plot(board, &mut claimed_cords, (x,y));
-	    println!("{}: {:?}", *plot, pa);
 	    regions.push((*plot, pa));
 	}
     }
@@ -215,16 +174,15 @@ fn part2(board: &Vec<Vec<char>>) -> u64 {
 		continue;
 	    }
 	    let pa = explore_plot(board, &mut claimed_cords, (x,y));
+	    // println!("{}: {:?}", *plot, pa);
 	    regions.push((*plot, pa));
-	    
-	    
 	}
     }
     regions.into_iter().map(|x| {x.1.2 * x.1.1}).sum()
 }
 
 fn main() {
-    let board = read_input("test_input2.txt");
+    let board = read_input("input.txt");
     println!("p1: {}", part1(&board));
     println!("p2: {}", part2(&board));
 }
